@@ -20,3 +20,6 @@ And that's it. Even though the used API is blocking, it is running in a separate
 You have to install pywin32 for this to work. Get it at: http://sourceforge.net/projects/pywin32/
 
 I'm also using balloontip.py to generate a handy Windows notification when the file is being moved. So feel free to comment the respective line if you don't feel like using it.
+
+# Thanks to
+Tim Golden for his incredibly useful post: http://timgolden.me.uk/python/win32_how_do_i/watch_directory_for_changes.html
