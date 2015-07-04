@@ -5,8 +5,6 @@ from multiprocessing import Process, Queue
 import win32con
 import win32file
 import argparse
-from balloontip import show_balloon_tip
-
 
 def win32monitor(q, path_to_watch, monitor_subfolders=False):
     """
@@ -16,8 +14,8 @@ def win32monitor(q, path_to_watch, monitor_subfolders=False):
     :param path_to_watch: String path of the directory that will be watched.
     :param monitor_subfolders: boolean, True if subdirs should be watched.
     """
-    FILE_LIST_DIRECTORY = 0x0001
-    handle_dir = win32file.CreateFile(
+    FILE_LIST_DIRECTORY = 0x0001                # access
+    handle_dir = win32file.CreateFile(          # This creates a handle to the directory to be watched
         path_to_watch,                          # dir path
         FILE_LIST_DIRECTORY,                    # access
         win32con.FILE_SHARE_READ |              # share modes
@@ -31,13 +29,9 @@ def win32monitor(q, path_to_watch, monitor_subfolders=False):
     results = win32file.ReadDirectoryChangesW(
         handle_dir,                                 # handle
         1024,                                       # buffer size
-        monitor_subfolders,                         # Watch subdirectories?
-        # win32con.FILE_NOTIFY_CHANGE_FILE_NAME |     # Flags for WHAT should be notified
-        # win32con.FILE_NOTIFY_CHANGE_DIR_NAME |      # Changes in DIR name
-        # win32con.FILE_NOTIFY_CHANGE_ATTRIBUTES |    # Changes in files attributes
+        monitor_subfolders,                         # monitor subdirectories?
         win32con.FILE_NOTIFY_CHANGE_SIZE |          # Changes in files size
         win32con.FILE_NOTIFY_CHANGE_LAST_WRITE,    # Changes in file modification timestamp
-        # win32con.FILE_NOTIFY_CHANGE_SECURITY,       # changes in security attrs
         None,                                       # overlapped (for async)
         None                                        # completion routine
     )
@@ -48,28 +42,25 @@ def win32monitor(q, path_to_watch, monitor_subfolders=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='vigil')
     parser.add_argument('-s', '--source', help='Source file',required=True)
-    parser.add_argument('-d', '--destination',help='Destination path/file', required=True)
+    parser.add_argument('-d', '--destination', help='Destination path/file', required=True)
+    parser.add_argument('-b', '--balloon', action="store_true", help='Use balloon notification. Requires balloontip.py')
     args = parser.parse_args()
-
-    ACTIONS = {
-        1: "Created",
-        2: "Deleted",
-        3: "Updated",
-        4: "Renamed from",
-        5: "Renamed to"
-    }
+    if args.balloon:
+        try:
+            from balloontip import show_balloon_tip
+        except ImportError:
+            print "\nballoontip.py not found. Ignoring option."
+            args.balloon = False
 
     watched_file = args.source
     destination = args.destination
 
-    # watched_file = "C:\\testfolder\\test.txt"
-    # destination = "C:\\testfolder\\dest"
     source_path, source_file = os.path.split(watched_file)
     destination_folder, destination_file = os.path.split(destination)
 
     if os.path.splitext(destination_file)[1] == '':
-        print "Your destination path contains no extension, and will be interpreted as a directory. " \
-              "Original filename will be preserved. \n Enter A to abort, or anything else to continue."
+        print "\nYour destination path contains no extension, and will be interpreted as a directory. " \
+              "Original filename will be preserved. \nEnter A to abort, or anything else to continue."
         if raw_input().lower() == 'a':
             print 'Aborting...'
             raise SystemExit(0)
@@ -86,23 +77,21 @@ if __name__ == '__main__':
             Without using join(), the user is able to get out of loop by CTRL + C,
             and the running process can be safely terminated.
             """
+            modification_time = os.stat(watched_file).st_mtime
             queue = Queue()
             proc = Process(target=win32monitor, args=(queue, source_path, False))
             proc.start()
             print "Process started. IS ALIVE: " + str(proc.is_alive())
             while queue.empty():
-                time.sleep(5)
-                # print "Still monitoring..."
-            results = queue.get()
-            for action, changed_file in results:
-                # full_filename = os.path.join(source_path, changed_file)
-                # print full_filename, ACTIONS.get(action, "Unknown")
-                if changed_file == source_file and action == 3:
-                    print 'A modification was detected in ' + changed_file
-                    print 'Moving it to ' + destination_folder + ' as ' + destination_file
-                    shutil.copy(watched_file, destination)
+                proc.join(5)
+            #  Wait a bit before checking (in case the watched file is edited right after the triggering event)
+            time.sleep(0.05)
+            if os.stat(watched_file).st_mtime != modification_time:
+                print 'A modification was detected in ' + source_file
+                print 'Moving it to ' + destination_folder + ' as ' + destination_file
+                shutil.copy(watched_file, destination)
+                if args.balloon:
                     show_balloon_tip("vigil.py", "Moving " + watched_file + " to " + destination)
-
         except KeyboardInterrupt:
             print "Killing process..."
             proc.terminate()
