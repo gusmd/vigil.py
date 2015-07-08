@@ -85,7 +85,7 @@ if __name__ == '__main__':
             while queue.empty():
                 proc.join(5)
             #  Wait a bit before checking (in case the watched file is edited right after the triggering event)
-            time.sleep(0.05)
+            time.sleep(0.1)
             if os.stat(watched_file).st_mtime != modification_time:
                 print 'A modification was detected in ' + source_file
                 print 'Moving it to ' + destination_folder + ' as ' + destination_file
